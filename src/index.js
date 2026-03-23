@@ -17,6 +17,9 @@ const cmsRoutes = require('./routes/cms');
 
 const app = express();
 
+// Trust proxy - important for getting real client IP when behind a reverse proxy
+app.set('trust proxy', 1);
+
 // ==================== BEZPEČNOST ====================
 app.use(helmet());
 app.use(cors({
