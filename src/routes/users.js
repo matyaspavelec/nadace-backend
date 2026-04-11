@@ -160,6 +160,7 @@ router.patch('/:id/profile', authenticate, requireRole('ADMIN', 'REGISTRATION_MA
     if (b.email !== undefined) data.email = b.email;
     if (b.phone !== undefined) data.phone = b.phone;
     if (b.dateOfBirth !== undefined) data.dateOfBirth = b.dateOfBirth ? new Date(b.dateOfBirth) : null;
+    if (b.resetDobLock) data.dateOfBirthChanged = false;
     if (b.addressStreet !== undefined) data.addressStreet = b.addressStreet;
     if (b.addressCity !== undefined) data.addressCity = b.addressCity;
     if (b.addressZip !== undefined) data.addressZip = b.addressZip;

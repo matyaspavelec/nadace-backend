@@ -16,6 +16,7 @@ model User {
   firstName         String
   lastName          String
   dateOfBirth       DateTime
+  dateOfBirthChanged Boolean @default(false)
   addressStreet     String
   addressCity       String
   addressZip        String

@@ -221,6 +221,7 @@ router.get('/me', authenticate, async (req, res) => {
     addressZip: user.addressZip,
     phone: user.phone,
     isPermanentResident: user.isPermanentResident,
+    dateOfBirthChanged: user.dateOfBirthChanged,
     role: user.role,
     registrationStatus: user.registrationStatus,
     trustLevel: user.trustLevel,
@@ -228,6 +229,59 @@ router.get('/me', authenticate, async (req, res) => {
     emailVerified: user.emailVerified,
     createdAt: user.createdAt,
   });
+});
+
+// ==================== ÚPRAVA VLASTNÍHO PROFILU ====================
+router.patch('/me', authenticate, async (req, res) => {
+  try {
+    const b = req.body;
+    const data = {};
+
+    // Adresní údaje a telefon - lze měnit volně
+    if (b.phone !== undefined) data.phone = b.phone;
+    if (b.addressStreet !== undefined) data.addressStreet = b.addressStreet;
+    if (b.addressCity !== undefined) data.addressCity = b.addressCity;
+    if (b.addressZip !== undefined) data.addressZip = b.addressZip;
+    if (b.isPermanentResident !== undefined) data.isPermanentResident = !!b.isPermanentResident;
+
+    // Datum narození - pouze 1x
+    if (b.dateOfBirth !== undefined && b.dateOfBirth) {
+      if (req.user.dateOfBirthChanged) {
+        return res.status(403).json({ error: 'Datum narození už bylo jednou změněno. Další úpravu může provést pouze administrátor.' });
+      }
+      const newDob = new Date(b.dateOfBirth);
+      if (isNaN(newDob.getTime())) {
+        return res.status(400).json({ error: 'Neplatné datum narození.' });
+      }
+      // Kontrola 18 let
+      const eighteenYearsAgo = new Date();
+      eighteenYearsAgo.setFullYear(eighteenYearsAgo.getFullYear() - 18);
+      if (newDob > eighteenYearsAgo) {
+        return res.status(400).json({ error: 'Musíte být starší 18 let.' });
+      }
+      data.dateOfBirth = newDob;
+      data.dateOfBirthChanged = true;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: 'Žádná data k uložení.' });
+    }
+
+    await prisma.user.update({ where: { id: req.user.id }, data });
+
+    await logAudit({
+      userId: req.user.id,
+      action: data.dateOfBirthChanged ? 'PROFILE_UPDATED_WITH_DOB' : 'PROFILE_UPDATED',
+      entity: 'User',
+      entityId: req.user.id,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Profil aktualizován.' });
+  } catch (error) {
+    console.error('Update own profile error:', error);
+    res.status(500).json({ error: 'Chyba při ukládání profilu.' });
+  }
 });
 
 // ==================== ZMĚNA HESLA ====================
