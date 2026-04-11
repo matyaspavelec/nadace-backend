@@ -349,7 +349,7 @@ router.post('/:id/request-completion', authenticate, requireRole('ADMIN', 'PROJE
         type: 'PROJECT_COMPLETION_REQUESTED',
         title: 'Vyžádáno doplnění projektu',
         message: message || 'Prosíme o doplnění vašeho návrhu projektu.',
-        link: `/projects/${project.id}`,
+        link: `/projekty/${project.id}`,
       },
     });
 

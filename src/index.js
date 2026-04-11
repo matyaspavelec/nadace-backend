@@ -104,4 +104,11 @@ app.listen(PORT, HOST, () => {
   logger.info(`Server běží na ${HOST}:${PORT}`);
   logger.info(`API: http://localhost:${PORT}/api`);
   startRetentionScheduler();
+
+  // One-shot backfill: starší notifikace měly link `/projects/...` (anglicky),
+  // ale FE route je `/projekty/...`. Přepíšeme je at fungují.
+  const prisma = require('./prisma');
+  prisma.$executeRaw`UPDATE "Notification" SET "link" = REPLACE("link", '/projects/', '/projekty/') WHERE "link" LIKE '/projects/%'`
+    .then((count) => { if (count > 0) logger.info(`[backfill] Opraveno ${count} notifikací s /projects/ linkem.`); })
+    .catch((err) => logger.warn({ err }, '[backfill] Notification link fix selhal'));
 });
