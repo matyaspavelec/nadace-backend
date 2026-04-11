@@ -147,6 +147,42 @@ router.patch('/:id/role', authenticate, requireRole('ADMIN'), async (req, res) =
   }
 });
 
+// ==================== ÚPRAVA OSOBNÍCH ÚDAJŮ (admin) ====================
+router.patch('/:id/profile', authenticate, requireRole('ADMIN', 'REGISTRATION_MANAGER'), async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return res.status(404).json({ error: 'Uživatel nenalezen.' });
+
+    const b = req.body;
+    const data = {};
+    if (b.firstName !== undefined) data.firstName = b.firstName;
+    if (b.lastName !== undefined) data.lastName = b.lastName;
+    if (b.email !== undefined) data.email = b.email;
+    if (b.phone !== undefined) data.phone = b.phone;
+    if (b.dateOfBirth !== undefined) data.dateOfBirth = b.dateOfBirth ? new Date(b.dateOfBirth) : null;
+    if (b.addressStreet !== undefined) data.addressStreet = b.addressStreet;
+    if (b.addressCity !== undefined) data.addressCity = b.addressCity;
+    if (b.addressZip !== undefined) data.addressZip = b.addressZip;
+    if (b.isPermanentResident !== undefined) data.isPermanentResident = !!b.isPermanentResident;
+
+    const updated = await prisma.user.update({ where: { id: req.params.id }, data });
+
+    await logAudit({
+      userId: req.params.id,
+      adminId: req.user.id,
+      action: 'USER_PROFILE_UPDATED',
+      entity: 'User',
+      entityId: req.params.id,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Osobní údaje uživatele aktualizovány.', user: { id: updated.id } });
+  } catch (error) {
+    console.error('Update user profile error:', error);
+    res.status(500).json({ error: 'Chyba při ukládání osobních údajů.' });
+  }
+});
+
 // ==================== INTERNÍ HODNOCENÍ ====================
 router.patch('/:id/trust', authenticate, requireRole('ADMIN', 'REGISTRATION_MANAGER'), async (req, res) => {
   try {
