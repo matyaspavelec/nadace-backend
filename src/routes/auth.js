@@ -18,9 +18,7 @@ router.post('/register', [
   body('firstName').trim().notEmpty().withMessage('Jméno je povinné.'),
   body('lastName').trim().notEmpty().withMessage('Příjmení je povinné.'),
   body('dateOfBirth').isISO8601().withMessage('Neplatné datum narození.'),
-  body('addressStreet').trim().notEmpty().withMessage('Ulice je povinná.'),
-  body('addressCity').trim().notEmpty().withMessage('Město je povinné.'),
-  body('addressZip').trim().notEmpty().withMessage('PSČ je povinné.'),
+  body('addressCity').trim().notEmpty().withMessage('Obec je povinná.'),
   body('phone').trim().notEmpty().withMessage('Telefon je povinný.'),
   body('isPermanentResident').isBoolean().withMessage('Trvalé bydliště musí být boolean.'),
   body('gdprConsent').equals('true').withMessage('Musíte souhlasit se zpracováním osobních údajů.'),
@@ -33,7 +31,7 @@ router.post('/register', [
 
   try {
     const { email, password, firstName, lastName, dateOfBirth, addressStreet,
-            addressCity, addressZip, phone, isPermanentResident, gdprConsent, rulesConsent } = req.body;
+            addressCity, addressZip, phone, isPermanentResident } = req.body;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -50,9 +48,9 @@ router.post('/register', [
         firstName,
         lastName,
         dateOfBirth: new Date(dateOfBirth),
-        addressStreet,
+        addressStreet: addressStreet && addressStreet !== '-' ? addressStreet : null,
         addressCity,
-        addressZip,
+        addressZip: addressZip && addressZip !== '-' ? addressZip : null,
         phone,
         isPermanentResident: isPermanentResident === true || isPermanentResident === 'true',
         emailVerifyToken,

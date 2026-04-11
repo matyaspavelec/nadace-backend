@@ -17,9 +17,9 @@ model User {
   lastName          String
   dateOfBirth       DateTime
   dateOfBirthChanged Boolean @default(false)
-  addressStreet     String
+  addressStreet     String?
   addressCity       String
-  addressZip        String
+  addressZip        String?
   isPermanentResident Boolean @default(false)
   phone             String
   emailVerified     Boolean  @default(false)
