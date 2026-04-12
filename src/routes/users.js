@@ -217,4 +217,43 @@ router.patch('/:id/trust', authenticate, requireRole('ADMIN', 'REGISTRATION_MANA
   }
 });
 
+// ==================== SMAZÁNÍ UŽIVATELE ====================
+router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return res.status(404).json({ error: 'Uživatel nenalezen.' });
+
+    if (user.role === 'ADMIN' && user.id !== req.user.id) {
+      return res.status(400).json({ error: 'Nelze smazat jiného administrátora.' });
+    }
+
+    // Smazat související záznamy
+    await prisma.$transaction([
+      prisma.vote.deleteMany({ where: { userId: req.params.id } }),
+      prisma.comment.deleteMany({ where: { userId: req.params.id } }),
+      prisma.interview.deleteMany({ where: { userId: req.params.id } }),
+      prisma.projectReview.deleteMany({ where: { reviewerId: req.params.id } }),
+      prisma.notification.deleteMany({ where: { userId: req.params.id } }),
+      prisma.auditLog.deleteMany({ where: { OR: [{ userId: req.params.id }, { adminId: req.params.id }] } }),
+      prisma.user.update({ where: { id: req.params.id }, data: { approvedById: null } }),
+      prisma.user.updateMany({ where: { approvedById: req.params.id }, data: { approvedById: null } }),
+      prisma.user.delete({ where: { id: req.params.id } }),
+    ]);
+
+    await logAudit({
+      adminId: req.user.id,
+      action: 'USER_DELETED',
+      entity: 'User',
+      entityId: req.params.id,
+      details: `${user.firstName} ${user.lastName} (${user.email})`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Uživatel byl smazán.' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Chyba při mazání uživatele.' });
+  }
+});
+
 module.exports = router;

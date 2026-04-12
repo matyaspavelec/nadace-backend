@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
 const router = express.Router();
 
 // ==================== HLASOVAT ====================
-router.post('/', authenticate, requireApproved, requireMinMembership, [
+router.post('/', authenticate, requireApproved, [
   body('projectId').notEmpty().withMessage('ID projektu je povinné.'),
   body('value').isIn(['YES', 'NO']).withMessage('Hlas musí být YES nebo NO.'),
   body('comment').optional().trim(),
