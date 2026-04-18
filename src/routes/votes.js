@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const prisma = require('../prisma');
-const { authenticate, requireApproved, requireMinMembership } = require('../middleware/auth');
+const { authenticate, requireApproved } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 const logger = require('../utils/logger');
 
