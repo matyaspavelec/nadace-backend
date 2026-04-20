@@ -109,6 +109,66 @@ router.get('/results/:projectId', authenticate, async (req, res) => {
   }
 });
 
+// ==================== SEZNAM VOLIČŮ U PROJEKTU (admin) ====================
+router.get('/project/:projectId/voters', authenticate, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return res.status(404).json({ error: 'Projekt nenalezen.' });
+
+    const voters = await prisma.vote.findMany({
+      where: { projectId },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ voters });
+  } catch (error) {
+    logger.error({ err: error }, 'Voters list error');
+    res.status(500).json({ error: 'Chyba při načítání voličů.' });
+  }
+});
+
+// ==================== SMAZAT JEDEN HLAS (admin) ====================
+// Použití: uživatel kontaktuje nadaci a žádá o opravu překlepu; admin
+// smaže jeho hlas, čímž mu umožní znovu hlasovat.
+router.delete('/:voteId', authenticate, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { voteId } = req.params;
+    const vote = await prisma.vote.findUnique({
+      where: { id: voteId },
+      include: { user: { select: { email: true } } },
+    });
+    if (!vote) return res.status(404).json({ error: 'Hlas nenalezen.' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.vote.delete({ where: { id: voteId } });
+      await tx.project.update({
+        where: { id: vote.projectId },
+        data: vote.value === 'YES'
+          ? { votesFor: { decrement: 1 } }
+          : { votesAgainst: { decrement: 1 } },
+      });
+    });
+
+    await logAudit({
+      userId: req.user.id,
+      action: 'VOTE_DELETED_BY_ADMIN',
+      entity: 'Vote',
+      entityId: voteId,
+      details: `Smazán hlas ${vote.value} uživatele ${vote.user?.email || vote.userId} (projekt ${vote.projectId})`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Hlas byl smazán. Uživatel může znovu hlasovat.' });
+  } catch (error) {
+    logger.error({ err: error }, 'Delete vote error');
+    res.status(500).json({ error: 'Chyba při mazání hlasu.' });
+  }
+});
+
 // ==================== RESET VŠECH HLASŮ U PROJEKTU (admin) ====================
 router.delete('/project/:projectId', authenticate, requireRole('ADMIN'), async (req, res) => {
   try {
