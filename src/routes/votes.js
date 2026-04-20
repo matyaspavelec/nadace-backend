@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const prisma = require('../prisma');
-const { authenticate, requireApproved } = require('../middleware/auth');
+const { authenticate, requireApproved, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 const logger = require('../utils/logger');
 
@@ -106,6 +106,39 @@ router.get('/results/:projectId', authenticate, async (req, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Vote results error');
     res.status(500).json({ error: 'Chyba při načítání výsledků.' });
+  }
+});
+
+// ==================== RESET VŠECH HLASŮ U PROJEKTU (admin) ====================
+router.delete('/project/:projectId', authenticate, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return res.status(404).json({ error: 'Projekt nenalezen.' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deleted = await tx.vote.deleteMany({ where: { projectId } });
+      await tx.project.update({
+        where: { id: projectId },
+        data: { votesFor: 0, votesAgainst: 0 },
+      });
+      return deleted.count;
+    });
+
+    await logAudit({
+      userId: req.user.id,
+      action: 'VOTES_RESET',
+      entity: 'Project',
+      entityId: projectId,
+      details: `Smazáno ${result} hlasů`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: `Hlasování bylo vynulováno. Smazáno ${result} hlasů.`, deletedCount: result });
+  } catch (error) {
+    logger.error({ err: error }, 'Reset votes error');
+    res.status(500).json({ error: 'Chyba při vynulování hlasování.' });
   }
 });
 
