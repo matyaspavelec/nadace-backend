@@ -142,4 +142,55 @@ router.delete('/project/:projectId', authenticate, requireRole('ADMIN'), async (
   }
 });
 
+// ==================== RESTART HLASOVÁNÍ (admin) ====================
+// Smaže hlasy, vynuluje počítadla a nastaví nové datum hlasování.
+router.post('/project/:projectId/restart', authenticate, requireRole('ADMIN'), [
+  body('votingStartDate').optional().isISO8601().withMessage('Neplatný formát začátku hlasování.'),
+  body('votingEndDate').optional().isISO8601().withMessage('Neplatný formát konce hlasování.'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  try {
+    const { projectId } = req.params;
+    const { votingStartDate, votingEndDate } = req.body;
+
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return res.status(404).json({ error: 'Projekt nenalezen.' });
+
+    if (votingStartDate && votingEndDate && new Date(votingEndDate) <= new Date(votingStartDate)) {
+      return res.status(400).json({ error: 'Konec hlasování musí být po jeho začátku.' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deleted = await tx.vote.deleteMany({ where: { projectId } });
+      await tx.project.update({
+        where: { id: projectId },
+        data: {
+          votesFor: 0,
+          votesAgainst: 0,
+          status: 'PUBLISHED_FOR_VOTING',
+          ...(votingStartDate ? { votingStartDate: new Date(votingStartDate) } : {}),
+          ...(votingEndDate ? { votingEndDate: new Date(votingEndDate) } : {}),
+        },
+      });
+      return deleted.count;
+    });
+
+    await logAudit({
+      userId: req.user.id,
+      action: 'VOTES_RESTARTED',
+      entity: 'Project',
+      entityId: projectId,
+      details: `Smazáno ${result} hlasů, nové okno: ${votingStartDate || 'beze změny'} – ${votingEndDate || 'beze změny'}`,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: `Hlasování bylo restartováno. Smazáno ${result} hlasů.`, deletedCount: result });
+  } catch (error) {
+    logger.error({ err: error }, 'Restart votes error');
+    res.status(500).json({ error: 'Chyba při restartu hlasování.' });
+  }
+});
+
 module.exports = router;
