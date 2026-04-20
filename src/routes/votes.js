@@ -169,44 +169,13 @@ router.delete('/:voteId', authenticate, requireRole('ADMIN'), async (req, res) =
   }
 });
 
-// ==================== RESET VŠECH HLASŮ U PROJEKTU (admin) ====================
-router.delete('/project/:projectId', authenticate, requireRole('ADMIN'), async (req, res) => {
-  try {
-    const { projectId } = req.params;
-
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
-    if (!project) return res.status(404).json({ error: 'Projekt nenalezen.' });
-
-    const result = await prisma.$transaction(async (tx) => {
-      const deleted = await tx.vote.deleteMany({ where: { projectId } });
-      await tx.project.update({
-        where: { id: projectId },
-        data: { votesFor: 0, votesAgainst: 0 },
-      });
-      return deleted.count;
-    });
-
-    await logAudit({
-      userId: req.user.id,
-      action: 'VOTES_RESET',
-      entity: 'Project',
-      entityId: projectId,
-      details: `Smazáno ${result} hlasů`,
-      ipAddress: req.ip,
-    });
-
-    res.json({ message: `Hlasování bylo vynulováno. Smazáno ${result} hlasů.`, deletedCount: result });
-  } catch (error) {
-    logger.error({ err: error }, 'Reset votes error');
-    res.status(500).json({ error: 'Chyba při vynulování hlasování.' });
-  }
-});
-
 // ==================== RESTART HLASOVÁNÍ (admin) ====================
-// Smaže hlasy, vynuluje počítadla a nastaví nové datum hlasování.
+// Smaže všechny hlasy a vynuluje počítadla. Pokud jsou zadány datumy,
+// nastaví nové okno hlasování a status na PUBLISHED_FOR_VOTING; jinak
+// zůstane status i datumy beze změny (čistý wipe).
 router.post('/project/:projectId/restart', authenticate, requireRole('ADMIN'), [
-  body('votingStartDate').optional().isISO8601().withMessage('Neplatný formát začátku hlasování.'),
-  body('votingEndDate').optional().isISO8601().withMessage('Neplatný formát konce hlasování.'),
+  body('votingStartDate').optional({ checkFalsy: true }).isISO8601().withMessage('Neplatný formát začátku hlasování.'),
+  body('votingEndDate').optional({ checkFalsy: true }).isISO8601().withMessage('Neplatný formát konce hlasování.'),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -222,6 +191,8 @@ router.post('/project/:projectId/restart', authenticate, requireRole('ADMIN'), [
       return res.status(400).json({ error: 'Konec hlasování musí být po jeho začátku.' });
     }
 
+    const hasNewWindow = !!(votingStartDate || votingEndDate);
+
     const result = await prisma.$transaction(async (tx) => {
       const deleted = await tx.vote.deleteMany({ where: { projectId } });
       await tx.project.update({
@@ -229,7 +200,7 @@ router.post('/project/:projectId/restart', authenticate, requireRole('ADMIN'), [
         data: {
           votesFor: 0,
           votesAgainst: 0,
-          status: 'PUBLISHED_FOR_VOTING',
+          ...(hasNewWindow ? { status: 'PUBLISHED_FOR_VOTING' } : {}),
           ...(votingStartDate ? { votingStartDate: new Date(votingStartDate) } : {}),
           ...(votingEndDate ? { votingEndDate: new Date(votingEndDate) } : {}),
         },
@@ -242,11 +213,16 @@ router.post('/project/:projectId/restart', authenticate, requireRole('ADMIN'), [
       action: 'VOTES_RESTARTED',
       entity: 'Project',
       entityId: projectId,
-      details: `Smazáno ${result} hlasů, nové okno: ${votingStartDate || 'beze změny'} – ${votingEndDate || 'beze změny'}`,
+      details: `Smazáno ${result} hlasů${hasNewWindow ? `, nové okno: ${votingStartDate || 'beze změny'} – ${votingEndDate || 'beze změny'}` : ' (beze změny okna)'}`,
       ipAddress: req.ip,
     });
 
-    res.json({ message: `Hlasování bylo restartováno. Smazáno ${result} hlasů.`, deletedCount: result });
+    res.json({
+      message: hasNewWindow
+        ? `Hlasování bylo restartováno. Smazáno ${result} hlasů.`
+        : `Hlasy byly vynulovány. Smazáno ${result} hlasů.`,
+      deletedCount: result,
+    });
   } catch (error) {
     logger.error({ err: error }, 'Restart votes error');
     res.status(500).json({ error: 'Chyba při restartu hlasování.' });
