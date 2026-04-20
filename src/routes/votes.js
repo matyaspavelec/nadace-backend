@@ -32,42 +32,13 @@ router.post('/', authenticate, requireApproved, [
       return res.status(400).json({ error: 'Hlasování pro tento projekt již skončilo.' });
     }
 
-    // Zkontrolovat, jestli uživatel už hlasoval
+    // Zkontrolovat, jestli uživatel už hlasoval – hlas je konečný
     const existingVote = await prisma.vote.findUnique({
       where: { userId_projectId: { userId: req.user.id, projectId } },
     });
 
     if (existingVote) {
-      // Změna hlasu
-      const oldValue = existingVote.value;
-      const updated = await prisma.vote.update({
-        where: { id: existingVote.id },
-        data: { value, comment: comment || null },
-      });
-
-      // Aktualizace počítadel
-      const updateData = {};
-      if (oldValue === 'YES' && value === 'NO') {
-        updateData.votesFor = { decrement: 1 };
-        updateData.votesAgainst = { increment: 1 };
-      } else if (oldValue === 'NO' && value === 'YES') {
-        updateData.votesFor = { increment: 1 };
-        updateData.votesAgainst = { decrement: 1 };
-      }
-      if (Object.keys(updateData).length > 0) {
-        await prisma.project.update({ where: { id: projectId }, data: updateData });
-      }
-
-      await logAudit({
-        userId: req.user.id,
-        action: 'VOTE_CHANGED',
-        entity: 'Vote',
-        entityId: updated.id,
-        details: `${oldValue} -> ${value}`,
-        ipAddress: req.ip,
-      });
-
-      return res.json({ message: 'Hlas byl změněn.', vote: updated });
+      return res.status(409).json({ error: 'Pro tento projekt jste již hlasoval/a. Hlas nelze změnit.' });
     }
 
     // Nový hlas
